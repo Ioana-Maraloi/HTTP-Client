@@ -272,11 +272,13 @@ void get_users(char *message, int sockfd, char *response, char **cookies, int *c
     }
 }
 void delete_user(char *message, int sockfd, char *response, char **cookies, int cookies_count){
-    char *username = malloc(sizeof(char) * 20);
+    char *username = malloc(sizeof(char) * 100);
     getchar();
     printf("username=");
     // scanf("%s", username);
-    fgets(username, 20, stdin);
+    fgets(username, 100, stdin);
+    username[strlen(username) - 1] = '\0';
+
     for(int i = 0; i < strlen(username); i++){
         if (username[i] == ' '){
             printf("ERROR: Username-ul nu are voie sa aiba spatii\n");
@@ -285,10 +287,9 @@ void delete_user(char *message, int sockfd, char *response, char **cookies, int 
         }
     }
 
-    char *path = malloc(sizeof(char) * 100);
+    char *path = calloc(100, 1);
     strcat(path,"/api/v1/tema/admin/users/");
     strcat(path, username);
-
     message = compute_delete_request("63.32.125.183", path, cookies, cookies_count, NULL);
     send_to_server(sockfd, message);
     response = receive_from_server(sockfd);
@@ -301,27 +302,7 @@ void delete_user(char *message, int sockfd, char *response, char **cookies, int 
     }
     free(username);
 }
-void get_movies_list(char *response){
-    size_t length = strlen(response);
-    int i = 0;
-    for ( i = 0; i < length; i++){
-        if (response[i] == '{'){
-            break;
-        }
-    }
-    JSON_Value *root_value = json_parse_string(response + i);
-    JSON_Object *root_object = json_value_get_object(root_value);
-    JSON_Array *users_array = json_object_get_array(root_object, "movies");
 
-    size_t count = json_array_get_count(users_array);
-    printf("SUCCESS: Lista filmelor\n");
-    for (size_t i = 0; i < count; i++) {
-        JSON_Object *user = json_array_get_object(users_array, i);
-        const char *title = json_object_get_string(user, "title");
-        int id = json_object_get_number(user, "id");
-        printf("#%d %s\n",id, title);
-    }
-}
 void get_movie(char *message, int sockfd, char *response, char **cookies, int cookies_count, char *JWT_token){
     char *id = malloc(sizeof(char) * 10);
     getchar();
@@ -330,10 +311,14 @@ void get_movie(char *message, int sockfd, char *response, char **cookies, int co
     char *url = calloc(100, 1);
     strcat(url, "/api/v1/tema/library/movies/");
     strcat(url, id);
-    printf("url: %s", url);
+    // printf("url: %s", url);
     message = compute_get_request("63.32.125.183", url, JWT_token, cookies, cookies_count);
-    send_to_server(sockfd, message);
-    response = receive_from_server(sockfd);
+
+    int sockfd2 = open_connection("63.32.125.183", 8081, AF_INET, SOCK_STREAM, 0);
+
+    send_to_server(sockfd2, message);
+    response = receive_from_server(sockfd2);
+    close_connection(sockfd2);
     // printf("RESPONSE: %s\n", response);
     int code = response_find(response);
     if (code == 200){
@@ -356,6 +341,8 @@ void get_movie(char *message, int sockfd, char *response, char **cookies, int co
         printf("year: %d\n", year);
         printf("description: %s\n", description);
         printf("rating: %s\n", rating);
+    } else if (code / 100 == 4){
+        printf("ERROR: %s\n", error_message(response));
     }
 }
 void add_movie(char *message, int sockfd, char *response, char **cookies, int cookies_count, char *JWT_token){
@@ -369,14 +356,6 @@ void add_movie(char *message, int sockfd, char *response, char **cookies, int co
     printf("title=");
     fgets(title, 100, stdin);
     if (title[strlen(title) - 1] == '\n') title[strlen(title) - 1] = '\0';
-    // for (int i = 0; i < strlen(title); i++){
-    //     if (title[i] == ' '){
-    //         printf("FAIL: titlul nu poate avea spatii.\n");
-    //         free(title);
-    //         free(description);
-    //         return;
-    //     }
-    // }
 
     printf("year=");
     scanf("%d", &year);
@@ -384,13 +363,12 @@ void add_movie(char *message, int sockfd, char *response, char **cookies, int co
 
     printf("description=");
     fgets(description, 100, stdin);
-    // fgets(description, sizeof(description), stdin);
     if (description[strlen(description) - 1] == '\n') description[strlen(description) - 1] = '\0';
 
     printf("rating=");
     scanf("%f", &rating);
     if (rating > 9.9){
-        printf("eroare: rating-ul nu poate fi peste 9.9.\n");
+        printf("ERROR: rating-ul nu poate fi peste 9.9.\n");
         free(title);
         free(description);
         // exit(-1);
@@ -440,7 +418,7 @@ void delete_movie(char *message, int sockfd, char *response, char **cookies, int
     if (code == 200){
         printf("SUCCESS: Movie sters\n");
     }  else if(code / 100 == 4){
-        printf("eroare: %s\n", error_message(response));
+        printf("ERROR: %s\n", error_message(response));
     }
     free(id);
     free(path);
@@ -449,17 +427,11 @@ void logout_admin(char *message, int sockfd, char *response, char **cookies, int
     message = compute_get_request("63.32.125.183", "/api/v1/tema/admin/logout", NULL, cookies, *cookies_count);
     send_to_server(sockfd, message);
     response = receive_from_server(sockfd);
-    // int pos = cookie_find(response);
-    // if (pos != -1)
-        // cookie_extract(response, pos, cookies, cookies_count, cookies_size);
     int code = response_find(response);
     if (code == 200){
         free(cookies[*cookies_count]);
         (*cookies_count)--;
         memset(JWT_token, 0, 200);
-
-        // free(cookies[*cookies_count]);
-        // (*cookies_count)--;
         printf("SUCCES: 200 - OK\n");
     }
     else if (code == 403){
@@ -470,15 +442,10 @@ void logout(char *message, int sockfd, char *response, char **cookies, int *cook
     message = compute_get_request("63.32.125.183", "/api/v1/tema/user/logout", NULL, cookies, *cookies_count);
     send_to_server(sockfd, message);
     response = receive_from_server(sockfd);
-    // int pos = cookie_find(response);
-    // if (pos != -1)
-        // cookie_extract(response, pos, cookies, cookies_count, cookies_size);
     int code = response_find(response);
     if (code == 200){
         free(cookies[*cookies_count]);
         (*cookies_count)--;
-        // free(cookies[*cookies_count]);
-        // (*cookies_count)--;
         memset(JWT_token, 0, 200);
         printf("SUCCES: 200 - OK\n");
     } else if(code == 403){
@@ -524,12 +491,9 @@ void get_access(char *message, int sockfd, char *response, char **cookies, int c
         if (j == token_size){
             memcpy(JWT_token, response + i + token_size + 3, length - i - token_size - 6);
             JWT_token[length - i - token_size - 6] = '\0';
-            // printf("TOKENUL:%s\n", JWT_token);
             break;
         }
     }
-
-    // JWT_token_extract(response, JWT_token);
     int code = response_find(response);
     if (code == 200){
         printf("SUCCESS: Token JWT primit\n");
@@ -537,11 +501,34 @@ void get_access(char *message, int sockfd, char *response, char **cookies, int c
         printf("eroare: %s\n", error_message(response));
     }
 }
-char *get_movies(char *message, int sockfd, char *response, char *JWT_token){
+void get_movies(char *message, int sockfd, char *response, char *JWT_token){
     message = compute_get_request("63.32.125.183", "/api/v1/tema/library/movies", JWT_token, NULL, 0);
     send_to_server(sockfd, message);
     response = receive_from_server(sockfd);
-    return response;
+    int code = response_find(response);
+    if (code == 200){
+        size_t length = strlen(response);
+        int i = 0;
+        for ( i = 0; i < length; i++){
+            if (response[i] == '{'){
+                break;
+            }
+        }
+        JSON_Value *root_value = json_parse_string(response + i);
+        JSON_Object *root_object = json_value_get_object(root_value);
+        JSON_Array *users_array = json_object_get_array(root_object, "movies");
+
+        size_t count = json_array_get_count(users_array);
+        printf("SUCCESS: Lista filmelor\n");
+        for (size_t i = 0; i < count; i++) {
+            JSON_Object *user = json_array_get_object(users_array, i);
+            const char *title = json_object_get_string(user, "title");
+            int id = json_object_get_number(user, "id");
+            printf("#%d %s\n",id, title);
+        }
+    } else if(code == 403){
+        printf("ERROR: %s\n", error_message(response));
+    }
 }
 
 void update_movie(char *message,int sockfd, char *response, char **cookies, int cookies_count, char *JWT_token){
@@ -556,9 +543,6 @@ void update_movie(char *message,int sockfd, char *response, char **cookies, int 
     scanf("%s", id);
     getchar();
 
-    // printf("title=");
-    // fgets(title, sizeof(title), stdin);
-    // if (title[strlen(title) - 1] == '\n') title[strlen(title) - 1] = '\0';
     printf("title=");
     fgets(title, 100, stdin);
     if (title[strlen(title) - 1] == '\n') title[strlen(title) - 1] = '\0';
@@ -588,17 +572,15 @@ void update_movie(char *message,int sockfd, char *response, char **cookies, int 
     serialized_string = json_serialize_to_string_pretty(root_value);
     char *body_data[1];
     body_data[0] = serialized_string;
-    printf("body: %s\n", body_data[0]);
 
     char *url = calloc(100, 1);
     strcat(url, "/api/v1/tema/library/movies/");
     strcat(url, id);
-    printf("url: %s\n", url);
     message = compute_put_request("63.32.125.183", url,JWT_token, "application/json", body_data, 1, cookies, cookies_count);
-    printf("message: %s\n", message);
+    // printf("message: %s\n", message);
     send_to_server(sockfd, message);
     response = receive_from_server(sockfd);
-    printf("RESPONSE: %s\n", response);
+    // printf("RESPONSE: %s\n", response);
     int code = response_find(response);
     if (code == 200){
         printf("SUCCESS: Film actualizat\n");
@@ -649,7 +631,6 @@ void get_collection(char *message, int sockfd, char *response, char **cookies, i
     char *url = calloc(100, 1);
     strcat(url, "/api/v1/tema/library/collections/");
     strcat(url, id);
-    printf("URL ESTE: %s\n", url);
 
     message = compute_get_request("63.32.125.183", url, JWT_token, cookies, cookies_count);
     send_to_server(sockfd, message);
@@ -675,23 +656,17 @@ void get_collection(char *message, int sockfd, char *response, char **cookies, i
             const char *movie_title = json_object_get_string(movie_obj, "title");
             printf("#%d: %s\n", id, movie_title);
         }
-
-
-        // printf("urmeaza\n");
     } else if (code / 100 == 4){    
-        printf("RASPUNS:%s\n", response);
-        printf("eroare: %s\n", error_message(response));
+        printf("ERROR: %s\n", error_message(response));
     }
 }
 
-void add_movie_to_collection(char *message, int sockfd,char * response, char **cookies, int cookies_count, char *JWT_token, char *collection, int id_movie){
+int add_movie_to_collection(char *message, int sockfd,char * response, char **cookies, int cookies_count, char *JWT_token, char *collection, int id_movie, int add_col){
     int id;
-    if (collection == NULL){
+    if (!add_col){
         collection = malloc(sizeof(char) * 100);
         printf("collection_id=");
         scanf("%s", collection);
-        // getchar();
-        // int id2;
         printf("movie_id=");
         scanf("%d", &id);
         getchar();
@@ -705,7 +680,6 @@ void add_movie_to_collection(char *message, int sockfd,char * response, char **c
     serialized_string = json_serialize_to_string_pretty(root_value);
     char *body_data[1];
     body_data[0] = serialized_string;
-    // printf("BODY DATA: %s", serialized_string);
     char *url = calloc(100, 1);
 
     strcat(url, "/api/v1/tema/library/collections/");
@@ -715,11 +689,44 @@ void add_movie_to_collection(char *message, int sockfd,char * response, char **c
     message = compute_post_request("63.32.125.183", url, JWT_token, "application/json", body_data, 1, cookies, cookies_count);
     send_to_server(sockfd, message);
     response = receive_from_server(sockfd);
-    printf("RESPONSE: %s\n", response);
     int code = response_find(response);
     if (code == 201){
-        printf("SUCCESS: \n");
+        if (!add_col){
+            printf("SUCCESS: FIlm adaugat in colectie\n");
+        }
+        return 1;
     }
+    return 0;
+}
+int delete_collection(char *message, int sockfd, char *response, char **cookies, int cookies_count, char *JWT_token, char *col){
+    char *path = calloc(100, 1);
+    strcat(path,"/api/v1/tema/library/collections/");
+    if (col == NULL){
+        char *id = malloc(sizeof(char) * 20);
+        printf("id=");
+        scanf("%s", id);
+        strcat(path, id);
+    } else {
+        strcat(path, col);
+    }
+    message = compute_delete_request("63.32.125.183", path, cookies, cookies_count, JWT_token);
+
+    send_to_server(sockfd, message);
+    response = receive_from_server(sockfd);
+    int code = response_find(response);
+    
+    if (code == 200){
+        if (col == NULL){
+            printf("SUCCESS: colectie stearsa\n");
+        }
+        return 1;
+    } else {
+        // if (col == NULL){
+            printf("ERROR: %s\n", error_message(response));
+        // }
+        return 0;
+    }
+    return 0;
 }
 void add_collection(char *message, int sockfd, char *response, char **cookies, int cookies_count, char *JWT_token){
     // char title[100];
@@ -729,16 +736,6 @@ void add_collection(char *message, int sockfd, char *response, char **cookies, i
     printf("title=");
     fgets(title, 100, stdin);
     if (title[strlen(title) - 1] == '\n') title[strlen(title) - 1] = '\0';
-    // for (int i = 0; i < strlen(title); i++){
-    //     if (title[i] == ' '){
-    //         printf("FAIL: titlul nu poate avea spatii.\n");
-    //         free(title);
-    //         return;
-    //     }
-    // }
-    // fgets(title, sizeof(title), stdin);
-    // if (title[strlen(title) - 1] == '\n') title[strlen(title) - 1] = '\0';
-
     int num_movies;
     printf("num_movies=");
     scanf("%d", &num_movies);
@@ -750,71 +747,19 @@ void add_collection(char *message, int sockfd, char *response, char **cookies, i
     json_object_set_number(root_object, "num_movies", num_movies);
 
     int *num_id = malloc(sizeof(int) * num_movies);
-    // JSON_Value *array_movies_value = json_value_init_array();
-    // JSON_Array *array_movies = json_value_get_array(array_movies_value);
-
-    // char **num_id_char = malloc(num_movies *sizeof(char*));
     for (int i = 0; i < num_movies; i++){
-        // num_id_char[i] = malloc(sizeof(char) * 100);
         printf("movie_id[%d]=", i);
         scanf("%d", &num_id[i]);
-        // scanf("%s", num_id_char[i]);
-
-        // printf("am citit movieid:%s\n", num_id_char[i]);
-        // char *id = malloc(sizeof(char) * 10);
-        // sprintf(id, "%d", num_id[i]);
-        // printf("am dat sprintf:%s\n", id);
-
-        // char *url2 = malloc(sizeof(char) * 100);
-        // strcat(url2, "/api/v1/tema/library/movies/");
-        // strcat(url2, num_id_char[i]);
-        // // printf("urlul2:%s\n", url2);
-        // int sockfd2 = open_connection("63.32.125.183", 8081, AF_INET, SOCK_STREAM, 0);
-        // message = compute_get_request("63.32.125.183", url2, JWT_token, cookies, cookies_count);
-        // send_to_server(sockfd2, message);
-        // response = receive_from_server(sockfd2);
-        // close_connection(sockfd2);
-        // printf("RESPONSE pt filmul %s: %s\n", num_id_char[i], response);
-        // int code2 = response_find(response);
-        // if (code2 == 200){
-        //     printf("SUCCESS: Detalii film\n");
-        //     size_t length = strlen(response);
-        //     int j = 0;
-        //     for ( j = 0; j < length;j++){
-        //         if (response[j] == '{'){
-        //             break;
-        //         }
-        //     }
-        //     JSON_Value *root_value2 = json_parse_string(response + j);
-        //     JSON_Object *movie = json_value_get_object(root_value2);
-        //     // const char *title = json_object_get_string(movie, "title");
-        //     printf("titlul filmului:%s\n", title);
-
-        //     JSON_Value *movie_value_collection = json_value_init_object();
-        //     JSON_Object *movie_collection = json_value_get_object(movie_value_collection);
-        //     json_object_set_number(movie_collection, "id", atoi(num_id_char[i]));
-        //     // json_object_set_string(movie_collection, "title", title);
-
-        //     json_array_append_value(array_movies, movie_value_collection);
-        // }
-        // // free(id);
-        // free(url2);
-        // getchar();
     }
-    // free(num_id);
     message = NULL;
     response = NULL;
-    // getchar();
-    // json_object_set_value(root_object, "movies", array_movies_value);
 
     serialized_string = json_serialize_to_string_pretty(root_value);
-    // printf("DEBUG: %s\n", serialized_string);
     char *body_data[1];
     body_data[0] = serialized_string;
     message = compute_post_request("63.32.125.183", "/api/v1/tema/library/collections", JWT_token, "application/json", body_data, 1, cookies, cookies_count);
     send_to_server(sockfd, message);
     response = receive_from_server(sockfd);
-    // printf("RESPONSE: %s\n", response);
     int code = response_find(response);
     if (code == 201){
         printf("SUCCESS: Colectie adaugata. acum adaug filmele\n");
@@ -822,44 +767,24 @@ void add_collection(char *message, int sockfd, char *response, char **cookies, i
         JSON_Value *root = json_parse_string(json);
         JSON_Object *root_obj = json_value_get_object(root);
         int id = (int)json_object_get_number(root_obj, "id");
-        char *buffer = malloc(sizeof(char) * 10);
-        sprintf(buffer, "%d",id);
+        char *collection_id_string = malloc(sizeof(char) * 10);
+        sprintf(collection_id_string, "%d", id);
         for(int i = 0; i < num_movies; i++){
-            add_movie_to_collection(message, sockfd, response, cookies, cookies_count,JWT_token,buffer, num_id[i]);
+            int success = add_movie_to_collection(message, sockfd, response, cookies, cookies_count, JWT_token, collection_id_string, num_id[i], 1);
+            if (success != 1){
+                int del = delete_collection(message, sockfd, response, cookies, cookies_count, JWT_token, collection_id_string);
+                if (del == 1){
+                    printf("ERROR: eroare la adaugare \n");
+                }
+                return;
+            }
         }
-        // printf("title: %s\n", title);
-        // printf("year: %d\n", year);
-        // printf("description: %s\n", description);
-        // printf("rating: %f\n", rating);
+        free(collection_id_string);
+        printf("SUCCESS: Colectie adaugata\n");
     }
     free(title);
 }
-void delete_collection(char *message, int sockfd, char *response, char **cookies, int cookies_count, char *JWT_token){
-    char *id = malloc(sizeof(char) * 20);
-    printf("id=");
-    scanf("%s", id);
 
-    char *path = calloc(100, 1);
-    strcat(path,"/api/v1/tema/library/collections/");
-    strcat(path, id);
-
-    message = compute_delete_request("63.32.125.183", path, cookies, cookies_count, JWT_token);
-    printf("DELETE PATH: %s\n", path);
-    printf("DELETE REQUEST:\n%s\n", message);
-
-    send_to_server(sockfd, message);
-    printf("am trimis\n");
-    response = receive_from_server(sockfd);
-    if (response == NULL || strlen(response) == 0) {
-        printf("EROARE: Nu am primit nimic de la server!\n");
-    return;
-}
-
-    printf("RASPUNS: %s\n", response);
-
-    free(id);
-    // return response;
-}
 void delete_movie_from_collection(char *message, int sockfd, char *response, char **cookies, int cookies_count, char *JWT_token){
     char *collection_id = malloc(sizeof(char) * 20);
     printf("collection_id=");
@@ -877,19 +802,16 @@ void delete_movie_from_collection(char *message, int sockfd, char *response, cha
 
     strcat(path, "/movies/");
     strcat(path, movie_id);
-    printf("PATH: %s\n", path);
     message = compute_delete_request("63.32.125.183", path, cookies, cookies_count, JWT_token);
     send_to_server(sockfd, message);
     response = receive_from_server(sockfd);
     free(collection_id);
     free(movie_id);
-    printf("RASPUNS: %s\n", response);
-    // return response;
 }
 int main(int argc, char *argv[])
 {
-    char *message;
-    char *response;
+    char *message = NULL;
+    char *response = NULL;
     int sockfd;
 
     char *command = malloc(sizeof(char) * 100);
@@ -931,16 +853,8 @@ int main(int argc, char *argv[])
         } else if(strcmp(command, "get_movie") == 0){
             get_movie(message, sockfd, response, cookies, cookies_count, JWT_token);
         } else if(strcmp(command, "get_movies") == 0){
-            response = get_movies(message, sockfd, response, JWT_token);
-            // int pos = cookie_find(response);
-            // if (pos != -1)
-                // cookie_extract(response, pos, cookies, &cookies_count, &cookies_size);
-            int code = response_find(response);
-            if (code == 200){
-                get_movies_list(response);
-            } else if(code == 403){
-                printf("eroare: %s\n", error_message(response));
-            }
+            get_movies(message, sockfd, response, JWT_token);
+            
         } else if(strcmp(command, "add_movie") == 0){
             add_movie(message, sockfd,response, cookies, cookies_count, JWT_token);
         } else if(strcmp(command, "delete_movie") == 0){
@@ -954,20 +868,14 @@ int main(int argc, char *argv[])
         } else if(strcmp(command, "add_collection") == 0){
             add_collection(message, sockfd, response, cookies, cookies_count, JWT_token);
         } else if(strcmp(command, "delete_collection") == 0){
-            delete_collection(message, sockfd, response, cookies, cookies_count, JWT_token);
+            delete_collection(message, sockfd, response, cookies, cookies_count, JWT_token, NULL);
         } else if(strcmp(command, "add_movie_to_collection") == 0){
-            int id = 0;
-            add_movie_to_collection(message, sockfd, response, cookies, cookies_count, JWT_token, NULL, id);
+            add_movie_to_collection(message, sockfd, response, cookies, cookies_count, JWT_token, NULL, 0, 0);
         } else if(strcmp(command, "delete_movie_from_collection") == 0){
             delete_movie_from_collection(message, sockfd, response, cookies, cookies_count, JWT_token);
         } else {
             printf("Invalid command!\n");
         }
-        // printf("TOKENUL: %s\n", JWT_token);
-        // printf("cookies count si cookies size : %d %d\n", cookies_count, cookies_size);
-        // for (int i = 0; i < cookies_count; i++){
-        //     printf( "cookies: %d %s\n", i, cookies[i]);
-        // }
         memset(command, 0, 100);
     }
     return 0;
