@@ -32,10 +32,15 @@
 ## delete_movie
 - am citit id-ul de la tastatura, am creat o variabila pentru url si am concatenat id-ul acolo. am creat functia compute_delete_request in fisierul requests.c, dupa modelul get. am apelat functia, dand ca parametru tokenul jwt. daca am primit codul 200, operatiunea s-a realizat cu succes.
 ## logout_admin
+- transmit cererea GET, iar daca am primit cod 200, m-am delogat cu succes si sterg cookie-ul si token-ul JWT. 
 ## logout
+- similar logout_admin
 ## get_movies
+- similar get_users
 ## update_movie
+- citesc datele, id-ul ,anul, titlul, descrierea si rating-ul si ma asigur ca rating-ul este mai mic decat 10. transmit mesajul si afisez mesajul SUCCESS sau FAIL, in functie de codul primit ca raspuns.
 ## get_collections
+- similar get_users
 ## get_collection
 -  citesc id-ul colectiei, concatenez la url si transmit cererea. daca s-a realizat cu succes, extrag json-ul si, din acesta extrag titlul, owner-ul si le afisez. apoi extrag lista de filme si afisez fiecare film.
 ## add_movie_to_collection
